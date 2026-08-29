@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deutschkurs — German Course Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+
+<style>
+  :root{
+    --ink:#1c2431;
+    --ink-soft:#3d4759;
+    --paper:#f6f3ec;
+    --paper-raised:#ffffff;
+    --rule:#dcd6c6;
+    --gold:#b8862f;
+    --gold-soft:#e9d9b3;
+    --brick:#a34a3a;
+    --moss:#5c7a5e;
+    --shadow: 0 1px 2px rgba(28,36,49,0.06), 0 8px 24px rgba(28,36,49,0.06);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:'Inter',sans-serif; -webkit-font-smoothing:antialiased; }
+
+  .syncbar{
+    position:sticky; top:0; z-index:50;
+    background:var(--ink); color:var(--paper);
+    font-family:'JetBrains Mono',monospace; font-size:12px;
+    padding:9px 24px;
+    display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  }
+  .syncbar .left{ display:flex; align-items:center; gap:10px; }
+  .dot{ width:8px; height:8px; border-radius:50%; background:#7a8598; flex-shrink:0; }
+  .dot.ok{ background:#6fbf73; }
+  .dot.busy{ background:var(--gold); }
+  .dot.err{ background:var(--brick); }
+  .syncbar button{
+    font-family:'JetBrains Mono',monospace; font-size:11px;
+    background:transparent; border:1px solid #4a5468; color:var(--paper);
+    padding:4px 10px; border-radius:14px; cursor:pointer;
+  }
+  .syncbar button:hover{ border-color:var(--gold); color:var(--gold); }
+  .syncbar .code{ color:var(--gold-soft); }
+
+  header{ padding:56px 32px 40px; max-width:1180px; margin:0 auto; border-bottom:1px solid var(--rule); }
+  .eyebrow{ font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--gold); margin:0 0 14px; }
+  h1{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(34px,5vw,54px); line-height:1.05; margin:0 0 14px; letter-spacing:-0.01em; }
+  h1 em{ font-style:italic; font-weight:400; color:var(--gold); }
+  .lede{ font-size:16px; color:var(--ink-soft); max-width:600px; line-height:1.6; margin:0; }
+
+  .overall{ max-width:1180px; margin:36px auto 0; padding:0 32px; display:flex; gap:40px; align-items:flex-end; flex-wrap:wrap; }
+  .overall .stat{ font-family:'Fraunces',serif; font-size:44px; font-weight:600; line-height:1; }
+  .overall .stat span{ font-family:'Inter',sans-serif; font-size:14px; font-weight:500; color:var(--ink-soft); display:block; margin-top:6px; }
+  .overall-bar-wrap{ flex:1; min-width:220px; padding-bottom:8px; }
+  .overall-bar{ height:10px; border-radius:6px; background:var(--rule); overflow:hidden; position:relative; }
+  .overall-bar-fill{ height:100%; background:linear-gradient(90deg,var(--gold),var(--brick)); width:0%; transition:width .4s ease; border-radius:6px; }
+
+  .layout{ max-width:1180px; margin:48px auto 100px; padding:0 32px; display:grid; grid-template-columns:200px 1fr; gap:48px; }
+
+  .ladder{ position:sticky; top:48px; align-self:start; display:flex; flex-direction:column; gap:6px; }
+  .ladder-title{ font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:10px; }
+  .rung{ display:flex; align-items:center; gap:12px; padding:9px 10px; border-radius:8px; cursor:pointer; text-decoration:none; color:var(--ink); transition:background .15s ease; }
+  .rung:hover{ background:var(--paper-raised); }
+  .rung-level{ font-family:'Fraunces',serif; font-weight:600; font-size:15px; width:34px; }
+  .rung-track{ flex:1; height:5px; background:var(--rule); border-radius:4px; overflow:hidden; }
+  .rung-fill{ height:100%; background:var(--moss); width:0%; transition:width .4s ease; }
+  .rung-pct{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--ink-soft); width:30px; text-align:right; }
+
+  .module{ margin-bottom:56px; scroll-margin-top:60px; }
+  .module-head{ display:flex; align-items:baseline; gap:14px; margin-bottom:6px; flex-wrap:wrap; }
+  .module-num{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--gold); letter-spacing:.06em; }
+  .module h2{ font-family:'Fraunces',serif; font-size:26px; font-weight:600; margin:0; }
+  .module-level{ font-family:'JetBrains Mono',monospace; font-size:12px; background:var(--gold-soft); color:#6b4f14; padding:3px 9px; border-radius:20px; letter-spacing:.04em; }
+  .module-sub{ color:var(--ink-soft); font-size:14px; margin:6px 0 22px; }
+
+  .resource{ background:var(--paper-raised); border:1px solid var(--rule); border-radius:12px; padding:22px 24px; margin-bottom:16px; box-shadow:var(--shadow); }
+  .resource-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:10px; }
+  .resource-title{ font-weight:600; font-size:16px; margin:0 0 4px; }
+  .resource-link{ display:inline-flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--brick); text-decoration:none; border-bottom:1px solid transparent; }
+  .resource-link:hover{ border-bottom-color:var(--brick); }
+  .resource-badge{
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:500;
+    padding:5px 11px; border-radius:20px; white-space:nowrap; flex-shrink:0;
+    background:#f6e8e5; color:#7a3226; border:1px solid var(--brick);
+  }
+  .resource-badge.partial{ background:#faf1de; color:#6b4f14; border-color:var(--gold); }
+  .resource-badge.full{ background:#e4efe4; color:#33502f; border-color:var(--moss); }
+
+  .resource-bar{ height:5px; border-radius:4px; background:var(--rule); overflow:hidden; margin-bottom:16px; }
+  .resource-bar-fill{ height:100%; background:var(--moss); width:0%; transition:width .3s ease; }
+
+  .topics{ display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:4px 18px; margin-bottom:6px; }
+  .topic-row{ display:flex; align-items:flex-start; gap:9px; padding:5px 4px; border-radius:6px; cursor:pointer; }
+  .topic-row:hover{ background:var(--paper); }
+  .topic-check{
+    appearance:none; -webkit-appearance:none;
+    width:17px; height:17px; border-radius:5px; border:1.5px solid var(--rule);
+    margin-top:1px; cursor:pointer; position:relative; background:var(--paper); flex-shrink:0;
+  }
+  .topic-check:checked{ background:var(--moss); border-color:var(--moss); }
+  .topic-check:checked::after{
+    content:""; position:absolute; left:5px; top:2px; width:4px; height:8px;
+    border:solid white; border-width:0 1.5px 1.5px 0; transform:rotate(45deg);
+  }
+  .topic-label{ font-size:13.5px; line-height:1.4; user-select:none; }
+  .topic-row.done .topic-label{ color:var(--ink-soft); text-decoration:line-through; text-decoration-color:var(--rule); }
+
+  .note-row{ margin-top:14px; }
+  textarea.note{
+    width:100%; resize:vertical; min-height:30px;
+    font-family:'Inter',sans-serif; font-size:12.5px; padding:7px 9px;
+    border:1px solid var(--rule); border-radius:6px; background:var(--paper); color:var(--ink);
+  }
+
+  footer{ max-width:1180px; margin:0 auto 60px; padding:24px 32px 0; border-top:1px solid var(--rule); color:var(--ink-soft); font-size:12.5px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+  .reset-btn{ font-family:'JetBrains Mono',monospace; font-size:11px; background:none; border:1px solid var(--rule); padding:6px 12px; border-radius:20px; cursor:pointer; color:var(--ink-soft); }
+  .reset-btn:hover{ border-color:var(--brick); color:var(--brick); }
+
+  .modal-overlay{ position:fixed; inset:0; background:rgba(28,36,49,0.55); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; }
+  .modal{ background:var(--paper-raised); border-radius:14px; padding:32px; max-width:420px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.3); }
+  .modal h3{ font-family:'Fraunces',serif; font-size:22px; margin:0 0 10px; }
+  .modal p{ font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin:0 0 18px; }
+  .modal input{ width:100%; font-family:'JetBrains Mono',monospace; font-size:14px; padding:11px 14px; border:1.5px solid var(--rule); border-radius:8px; margin-bottom:14px; background:var(--paper); color:var(--ink); }
+  .modal input:focus{ outline:none; border-color:var(--gold); }
+  .modal button.primary{ width:100%; font-family:'Inter',sans-serif; font-weight:600; font-size:14px; padding:12px; border:none; border-radius:8px; background:var(--ink); color:var(--paper); cursor:pointer; }
+  .modal button.primary:hover{ background:var(--brick); }
+  .modal .hint{ font-size:11.5px; color:var(--ink-soft); margin-top:12px; line-height:1.5; }
+  .modal .err{ color:var(--brick); font-size:12.5px; margin:-8px 0 12px; display:none; }
+
+  @media (max-width:760px){
+    .layout{grid-template-columns:1fr;}
+    .ladder{ position:static; flex-direction:row; overflow-x:auto; gap:4px; padding-bottom:8px; border-bottom:1px solid var(--rule); margin-bottom:8px; }
+    .rung{flex-direction:column; align-items:flex-start; min-width:74px;}
+    .rung-track{width:100%;}
+    .topics{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="syncbar">
+  <div class="left">
+    <span class="dot" id="syncDot"></span>
+    <span id="syncLabel">Connecting…</span>
+    <span class="code" id="syncCodeLabel"></span>
+  </div>
+  <button id="changeCodeBtn">Switch device / code</button>
+</div>
+
+<header>
+  <p class="eyebrow"> German Curriculum · self-study companion</p>
+  <h1>Climbing to <em>C2</em>,<br>one topic at a time.</h1>
+  <p class="lede">Every sub-topic from your German Language Course, mapped to a free video resource and individually checkable — so you always know exactly where you left off. Syncs across devices with your sync code.</p>
+</header>
+
+<div class="overall">
+  <div class="stat" id="overallPct">0%<span>overall progress</span></div>
+  <div class="overall-bar-wrap">
+    <div class="overall-bar"><div class="overall-bar-fill" id="overallBarFill"></div></div>
+  </div>
+</div>
+
+<div class="layout">
+  <nav class="ladder" id="ladder">
+    <p class="ladder-title">Levels</p>
+  </nav>
+  <main id="modules"></main>
+</div>
+
+<footer>
+  <span>Progress is stored in the cloud and keyed to your sync code — open this same page on any device and enter the same code to see it.</span>
+  <button class="reset-btn" id="resetBtn">Reset all progress</button>
+</footer>
+
+<div class="modal-overlay" id="modalOverlay" style="display:none;">
+  <div class="modal">
+    <h3>Enter your sync code</h3>
+    <p>Make up a private passphrase the first time — something only you'd know. Enter the exact same phrase on every device to see the same progress.</p>
+    <p class="err" id="modalErr">Please enter a code with at least 4 characters.</p>
+    <input type="text" id="codeInput" placeholder="e.g. geetsehgaldating.netlify.app" autocomplete="off" spellcheck="false">
+    <button class="primary" id="codeSubmit">Sync my progress</button>
+    <p class="hint">This code is not a password — anyone with it can view or edit this tracker. Pick something unguessable, not something public.</p>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   FIREBASE CONFIG — fill in with your own project before deploying.
+   1. console.firebase.google.com → Add project (free)
+   2. Build → Firestore Database → Create database (production mode)
+   3. Project settings (gear icon) → General → Your apps → Web app (</>) → copy config below
+   4. Firestore → Rules → paste:
+
+      rules_version = '2';
+      service cloud.firestore {
+        match /databases/{database}/documents {
+          match /progress/{syncCode} {
+            allow read, write: if true;
+          }
+        }
+      }
+
+   Open rules are fine here — this only stores checkbox states for a
+   language course, nothing sensitive. Treat your sync code like a
+   private nickname, not a public one.
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyDR2-PUBl562c831cpmMgpKdCuPpk56wdU",
+  authDomain: "langprogresstrack.firebaseapp.com",
+  projectId: "langprogresstrack",
+  storageBucket: "langprogresstrack.firebasestorage.app",
+  messagingSenderId: "102644635163",
+  appId: "1:102644635163:web:2e3ade98155e6b27a18abe",
+  measurementId: "G-8BLYTNWLJJ"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const CODE_CACHE_KEY = "german-tracker-sync-code";
+let syncCode = localStorage.getItem(CODE_CACHE_KEY) || "";
+let unsubscribe = null;
+let writeTimer = null;
+let state = {}; // { "m-i-s": true, ..., "note-m-i": "..." }
+let suppressNextSnapshot = false;
+
+/* ============================================================
+   CURRICULUM DATA — every sub-topic from the Henry Harvin PDF,
+   grouped under the resource that covers it, in document order.
+   ============================================================ */
+const DATA = [
+  { module: "Module 1", level: "A1", title: "The Beginners Level", items: [
+    {
+      title: "Learn German Original — A1 Playlist",
+      link: "https://www.youtube.com/playlist?list=PLF9mJC4RrjIhS4MMm0x72-qWEn1LRvPuW",
+      subtopics: ["Introduce yourself / countries / occupations","The alphabet & the numbers","Languages and countries","People and hobbies","Personal Pronouns and Verbs in the Present Tense","The Group of Nouns: der/die/das","Verbs","The Negation","Prepositions of Place","Personal Pronouns in The Accusative Case"]
+    },
+    {
+      title: "Learn German for Beginners (Lessons 1–63)",
+      link: "https://www.youtube.com/playlist?list=PLYzp2xhTw9W1Z9RvnCoveC0W7pkwUMHXy",
+      subtopics: ["The work, the workplace","Free time","At the hotel","The city map","Food and drink in the restaurant","Daily Schedule","Stress in the Office","On the Computer","Arranging Appointments","The Seasons and the Weather","Destinations, Travel Preparations","Means of Transport","Living & the Home Furnishings","Health","Excuses"]
+    },
+    {
+      title: "Learn German Original — A1–A2 Grammar",
+      link: "https://www.youtube.com/playlist?list=PLF9mJC4RrjIhOcVccRocapDsamn-JIceo",
+      subtopics: ["Verbs","Prepositions of Time","Sentence Connectives: Conjunctions","The Group of Nouns","Indicators of Space","Adjectives"]
+    }
+  ]},
+  { module: "Module 2", level: "A2", title: "The Upper Beginners Level", items: [
+    {
+      title: "Learn German Original — A2 Playlist",
+      link: "https://www.youtube.com/playlist?list=PLF9mJC4RrjIhv0_YjWvC0pmM1EZlVylBt",
+      subtopics: ["Introducing yourself","Professions and activities","Telling about the past","School, training, curriculum vitae","Daily schedule leisure activities","Purchasing & spending money","Words around money","The dream of wealth: What if…?","In the office, on the phone, making appointments","Verbs","The Perfect Tense","The Group of Nouns","The Negation","Main and Subordinate Clauses","Verbs with Dative and Accusative","Subjunctive II","Nouns Indicators of Time","CASUS"]
+    },
+    {
+      title: "FREE German Course A1–A2",
+      link: "https://www.youtube.com/playlist?list=PLthk4M8agiebUYLW-OOO28vShs4WP4Fpa",
+      subtopics: ["Vacation","Countries and Nationalities","Planning a Trip","Animals & Dangerous Animals","People","Living: Garden, City, etc.","Healthy Nutrition","National and International News","Theme: Environment","Theme: Technology","Indicators of Space","The Group of Nouns","Adjectives","Verbs","The Perfect Tense","Verbs + Prepositions","Nouns","Prepositions: of Space & of Time"]
+    }
+  ]},
+  { module: "Module 3", level: "B1", title: "The Intermediate Level", items: [
+    {
+      title: "Learn German Original — B1 Playlist",
+      link: "https://www.youtube.com/playlist?list=PLF9mJC4RrjIhhEGuI2x4_WWaIyn9q7MzV",
+      subtopics: ["Weather and Smalltalk","Languages","Luck","Stress","Time & Activities","Punctuality","Leisure time: museums","Leisure time: fine arts","Vacation","Problems at work","Arranging Appointments","Manners in Business Life","Reading","Means of Transport","Media","Advertising: Impact & History","Advertising: Product & Their Properties","The Complaint","The Past Tense","Verbs + Prepositions","Interrogative Particles","Modal Verbs, Brauchen+Zu","The Past Subjunctive"]
+    },
+    {
+      title: "B1 | B2 German Grammar",
+      link: "https://www.youtube.com/playlist?list=PLF9mJC4RrjIg4lFFiDhTthVvnfALjIYf4",
+      subtopics: ["Verbs + Dative + Accusative","N-Declination","Indicators of Time","Adverbs of Time","Reflexive Verbs","The Passive","Adjectives (Comparative/Superlative)","The Genitive","Relative Clauses","Language Learning","Lifelong Learning","Special Learning Tips","School, Certificates and Grades","Traffic Problem","Means of Transport","On The Way","Feelings of Happiness","Qualities","Stress, Anger and Joy","Food, German Recipes, Eating in Restaurant","Invitations and Good Wishes","Indicators of Conditional","Final Clauses","Noun-Verb-Connectors","Past Tenses","Time Clauses: Simultaneity, Non-Simultaneity","Prepositions","Adjectives + Prepositions","Enumerations","Causes and Consequences"]
+    }
+  ]},
+  { module: "Module 4", level: "B2", title: "The Upper Intermediate Level", items: [
+    {
+      title: "German B2 — Upper Intermediate",
+      link: "https://www.youtube.com/playlist?list=PLk1fjOl39-51lvdiuQYsLW-0aGIdNNknA",
+      subtopics: ["School, Training","Interpersonal relations","Living and renting","Travel, trouble on vacation","Complaint letters","Cultural differences in professional life","Smalltalk","Europe and the Germans","Modal verbs","Past tense: perfect / preteritum / past perfect","Declination of adjectives","Prepositions of two cases","The passive","Verbs with prepositional case","n-Declination","Causal and effect indicators (weil, denn, deshalb, so…dass)","Daily work: e-mails & telephone calls","Activities & Leisure","University","History and politics","News from all over the world","Crime Stories","Subjunctive II: politeness, unreality, past","Rection of verbs","Position of words in the sentence","Indicators of time","Indicators of conditional","Subjunctive I: Indirect speech","Subjunctive I alternate forms","Nouns – Verb – Connections"]
+    },
+    {
+      title: "B2 Rocking German Grammar",
+      link: "https://www.youtube.com/playlist?list=PLQim1xAumm0L8xqtjSJHqmOEtYfvBXtOd",
+      subtopics: ["Prepositions","Modal Particles","Participles as Adjectives","Connectors (during), Prepositions with Genitive","Negation","Word order in the sentence","The Word 'it'","Comparative sentences with than, how and ever","Two-Piece Connectors","Connectors to and without","Relative clauses with who","Noun-Verb Combinations","Passive and passive sentence forms","Indefinite Pronoun","Comparative sentences with als and wenn","Model sentences","Nouns, Verbs and Adjectives with Prepositions","Indirect speech with Subjunctive I","Nominalization of Verbs","Presentation of History","Presentation about a special person","Writing letter to the editor","Describe an event","To carry out a discussion"]
+    }
+  ]},
+  { module: "Module 5", level: "C1", title: "The Advanced Level", items: [
+    {
+      title: "German C1 — For Advanced Learners",
+      link: "https://www.youtube.com/playlist?list=PLk1fjOl39-53pjPz2VLCeu5vjOUMKZ22O",
+      subtopics: ["Weather and smalltalk","Languages","Luck","Stress","Laughing","Success: sport and profession","Failures","Environment and climate","The history of the division of Germany","The Wall","Living in the GDR","History and politics","Music & Photography"]
+    },
+    {
+      title: "C1 | Learn German Advanced",
+      link: "https://www.youtube.com/playlist?list=PLF9mJC4RrjIjlxkiVa8VEG55Lp9TcJMKP",
+      subtopics: ["Past tense of verbs","Prepositions of space and of time","Sentence connectives: Subordinate clauses","Adjectives with prepositional case","Two-part sentence connectives","Sentence connectives: main sentences","Modal verbs","Subjunctive II","Prepositions with the genitive","Progress","Expressing assumptions","Relative clauses","Extended modifiers (Partizipialattribute)","Declination of adjectives","Fixed connectives","Participles and adjectives as nouns","Subjunctive I","Imperative","Nominalization","The passive and alternative forms"]
+    }
+  ]},
+  { module: "Module 6", level: "C2", title: "The Proficiency Level", items: [
+    {
+      title: "Deutsche Grammatik (B2, C1, C2)",
+      link: "https://www.youtube.com/playlist?list=PLWeP-z5N50EoCEJxnxJbD1sGHuqrvHc4N",
+      subtopics: ["Communication and media","History and memories","Feelings, lies, strengths, and weaknesses","School time","Career opportunities and profession","Technical progress","Environment and pollution","Medicine","Special skills","Feelings","Living","Art & Creativity","Books and literature","Politics"]
+    },
+    {
+      title: "Wortschatz & Grammatik auf C1/C2-Niveau",
+      link: "https://www.youtube.com/watch?v=22qIL2fnogw",
+      subtopics: ["Tenses of the verbs","Verbs with prefixes (separable / inseparable)","Subjunctive II","Subjunctive I","Adverbial clauses","Verbs and their complements","Noun connectors","Word formation of the nouns","Participles as adjectives","Nominalized adjectives and participles","Relative clauses","Passive","Passive replacement forms","Modal verbs","Declination and comparison of adjectives","Adjectives and their complements","Word formation of the adjectives","Nominal style","Prepositions of the written language"]
+    }
+  ]},
+  { module: "Companion", level: "A1–C2", title: "Listening & Speaking Immersion", items: [
+    {
+      title: "Easy German — Street Interviews",
+      link: "https://www.youtube.com/@EasyGerman",
+      subtopics: ["Everyday street conversations","Regional accents & dialects","Slang and colloquial expressions","Cultural context behind common phrases"]
+    }
+  ]}
+];
+
+function setSyncStatus(kind, label){
+  document.getElementById("syncDot").className = "dot " + kind;
+  document.getElementById("syncLabel").textContent = label;
+}
+
+function docRef(){ return db.collection("progress").doc(syncCode); }
+
+function connect(code){
+  syncCode = code;
+  localStorage.setItem(CODE_CACHE_KEY, code);
+  document.getElementById("syncCodeLabel").textContent = "· " + code;
+  document.getElementById("modalOverlay").style.display = "none";
+
+  if(unsubscribe) unsubscribe();
+  setSyncStatus("busy", "Syncing…");
+
+  unsubscribe = docRef().onSnapshot(
+    (snap) => {
+      if(suppressNextSnapshot){ suppressNextSnapshot = false; return; }
+      state = (snap.exists && snap.data().data) || {};
+      setSyncStatus("ok", "Synced");
+      render();
+    },
+    (err) => {
+      console.error(err);
+      setSyncStatus("err", "Offline — check connection");
+    }
+  );
+}
+
+function pushState(){
+  clearTimeout(writeTimer);
+  setSyncStatus("busy", "Saving…");
+  writeTimer = setTimeout(() => {
+    suppressNextSnapshot = true;
+    docRef().set({ data: state, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
+      .then(() => setSyncStatus("ok", "Synced"))
+      .catch((err) => {
+        console.error(err);
+        setSyncStatus("err", "Save failed — retrying");
+        suppressNextSnapshot = false;
+      });
+  }, 500);
+}
+
+/* ---------- State helpers (subtopic granularity) ---------- */
+function topicKey(mIdx, iIdx, sIdx){ return `t-${mIdx}-${iIdx}-${sIdx}`; }
+function noteKey(mIdx, iIdx){ return `n-${mIdx}-${iIdx}`; }
+
+function isTopicDone(mIdx, iIdx, sIdx){ return !!state[topicKey(mIdx, iIdx, sIdx)]; }
+function toggleTopic(mIdx, iIdx, sIdx){
+  const k = topicKey(mIdx, iIdx, sIdx);
+  state[k] = !state[k];
+  pushState();
+  render();
+}
+function getNote(mIdx, iIdx){ return state[noteKey(mIdx, iIdx)] || ""; }
+function setNote(mIdx, iIdx, val){
+  state[noteKey(mIdx, iIdx)] = val;
+  pushState();
+}
+
+function resourceCounts(mIdx, iIdx){
+  const item = DATA[mIdx].items[iIdx];
+  const total = item.subtopics.length;
+  const done = item.subtopics.filter((_, sIdx) => isTopicDone(mIdx, iIdx, sIdx)).length;
+  return { done, total };
+}
+function moduleCounts(mIdx){
+  let total = 0, done = 0;
+  DATA[mIdx].items.forEach((item, iIdx) => {
+    const c = resourceCounts(mIdx, iIdx);
+    total += c.total; done += c.done;
+  });
+  return { done, total };
+}
+function overallCounts(){
+  let total = 0, done = 0;
+  DATA.forEach((mod, mIdx) => {
+    const c = moduleCounts(mIdx);
+    total += c.total; done += c.done;
+  });
+  return { done, total };
+}
+function pct(c){ return c.total ? Math.round((c.done / c.total) * 100) : 0; }
+
+/* ---------- Rendering ---------- */
+function renderLadder(){
+  const ladder = document.getElementById("ladder");
+  ladder.querySelectorAll(".rung").forEach(el => el.remove());
+  DATA.forEach((mod, mIdx) => {
+    const p = pct(moduleCounts(mIdx));
+    const a = document.createElement("a");
+    a.className = "rung";
+    a.href = "#mod-" + mIdx;
+    a.innerHTML = `
+      <span class="rung-level">${mod.level}</span>
+      <span class="rung-track"><span class="rung-fill" style="width:${p}%"></span></span>
+      <span class="rung-pct">${p}%</span>
+    `;
+    ladder.appendChild(a);
+  });
+}
+
+function renderModules(){
+  const container = document.getElementById("modules");
+  container.innerHTML = "";
+  DATA.forEach((mod, mIdx) => {
+    const mCounts = moduleCounts(mIdx);
+    const section = document.createElement("section");
+    section.className = "module";
+    section.id = "mod-" + mIdx;
+
+    const head = document.createElement("div");
+    head.className = "module-head";
+    head.innerHTML = `
+      <span class="module-num">${mod.module}</span>
+      <h2>${mod.title}</h2>
+      <span class="module-level">${mod.level}</span>
+    `;
+    section.appendChild(head);
+
+    const sub = document.createElement("p");
+    sub.className = "module-sub";
+    sub.textContent = `${mCounts.done}/${mCounts.total} topics complete · ${pct(mCounts)}%`;
+    section.appendChild(sub);
+
+    mod.items.forEach((item, iIdx) => {
+      const rCounts = resourceCounts(mIdx, iIdx);
+      const rPct = pct(rCounts);
+      const badgeClass = rPct === 100 ? "full" : (rPct > 0 ? "partial" : "");
+
+      const card = document.createElement("div");
+      card.className = "resource";
+
+      const top = document.createElement("div");
+      top.className = "resource-top";
+      top.innerHTML = `
+        <div>
+          <p class="resource-title">${item.title}</p>
+          <a class="resource-link" href="${item.link}" target="_blank" rel="noopener">▶ watch on youtube</a>
+        </div>
+        <span class="resource-badge ${badgeClass}">${rCounts.done}/${rCounts.total} topics</span>
+      `;
+      card.appendChild(top);
+
+      const bar = document.createElement("div");
+      bar.className = "resource-bar";
+      bar.innerHTML = `<div class="resource-bar-fill" style="width:${rPct}%"></div>`;
+      card.appendChild(bar);
+
+      const topicsWrap = document.createElement("div");
+      topicsWrap.className = "topics";
+      item.subtopics.forEach((topic, sIdx) => {
+        const done = isTopicDone(mIdx, iIdx, sIdx);
+        const row = document.createElement("label");
+        row.className = "topic-row" + (done ? " done" : "");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.className = "topic-check";
+        cb.checked = done;
+        cb.addEventListener("change", () => toggleTopic(mIdx, iIdx, sIdx));
+        const span = document.createElement("span");
+        span.className = "topic-label";
+        span.textContent = topic;
+        row.appendChild(cb);
+        row.appendChild(span);
+        topicsWrap.appendChild(row);
+      });
+      card.appendChild(topicsWrap);
+
+      const noteRow = document.createElement("div");
+      noteRow.className = "note-row";
+      const textarea = document.createElement("textarea");
+      textarea.className = "note";
+      textarea.placeholder = "Add a note for this resource (optional)…";
+      textarea.value = getNote(mIdx, iIdx);
+      textarea.addEventListener("input", () => setNote(mIdx, iIdx, textarea.value));
+      noteRow.appendChild(textarea);
+      card.appendChild(noteRow);
+
+      section.appendChild(card);
+    });
+
+    container.appendChild(section);
+  });
+}
+
+function renderOverall(){
+  const c = overallCounts();
+  const p = pct(c);
+  document.getElementById("overallPct").firstChild.textContent = p + "%";
+  document.getElementById("overallBarFill").style.width = p + "%";
+}
+
+function render(){
+  renderLadder();
+  renderModules();
+  renderOverall();
+}
+
+function showModal(){
+  document.getElementById("modalOverlay").style.display = "flex";
+  document.getElementById("codeInput").value = syncCode || "";
+  document.getElementById("modalErr").style.display = "none";
+  document.getElementById("codeInput").focus();
+}
+
+document.getElementById("changeCodeBtn").addEventListener("click", showModal);
+
+document.getElementById("codeSubmit").addEventListener("click", () => {
+  const val = document.getElementById("codeInput").value.trim().toLowerCase().replace(/\s+/g, "-");
+  if(val.length < 4){
+    document.getElementById("modalErr").style.display = "block";
+    return;
+  }
+  connect(val);
+});
+document.getElementById("codeInput").addEventListener("keydown", (e) => {
+  if(e.key === "Enter") document.getElementById("codeSubmit").click();
+});
+
+document.getElementById("resetBtn").addEventListener("click", () => {
+  if(confirm("Reset all progress and notes for this sync code? This can't be undone.")){
+    state = {};
+    pushState();
+    render();
+  }
+});
+
+if(syncCode){
+  document.getElementById("syncCodeLabel").textContent = "· " + syncCode;
+  connect(syncCode);
+} else {
+  setSyncStatus("busy", "Waiting for sync code");
+  showModal();
+}
+</script>
+
+</body>
+</html>
